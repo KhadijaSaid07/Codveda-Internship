@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JavaScript Interactivity</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <header class="header">
+        <h1>JavaScript Playground</h1>
+        <p>Learn by interacting with the page</p>
+    </header>
+
+    <main class="container">
+
+        <section class="card">
+            <h2>Dropdown Menu</h2>
+            <label for="topic">Choose a topic:</label>
+            <select id="topic">
+                <option value="">Select a topic</option>
+                <option value="HTML">HTML</option>
+                <option value="CSS">CSS</option>
+                <option value="JavaScript">JavaScript</option>
+            </select>
+            <p id="topicMessage">Your choice will appear here.</p>
+        </section>
+
+        <section class="card">
+            <h2>Click Counter</h2>
+            <p>Number of clicks:</p>
+            <p id="count">0</p>
+            <button id="countButton">Click Me</button>
+            <button id="resetButton" class="reset-button">Reset</button>
+        </section>
+
+        <section class="card">
+            <h2>Modal Window</h2>
+            <p>Click below to open a message.</p>
+            <button id="openModal">Open Modal</button>
+
+            <div id="modal" class="modal">
+                <div class="modal-content">
+                    <h2>Hello!</h2>
+                    <p>This is a JavaScript modal window.</p>
+                    <button id="closeModal">Close</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Contact Form</h2>
+
+            <form id="contactForm" novalidate>
+                <label for="name">Full Name</label>
+                <input type="text" id="name" placeholder="Enter your name">
+                <small id="nameError" class="error"></small>
+
+                <label for="email">Email Address</label>
+                <input type="text" id="email" placeholder="Enter your email">
+                <small id="emailError" class="error"></small>
+
+                <label for="messageInput">Message</label>
+                <textarea id="messageInput" placeholder="Write your message"></textarea>
+                <small id="messageError" class="error"></small>
+
+                <button type="submit">Submit</button>
+                <p id="formMessage"></p>
+            </form>
+        </section>
+
+    </main>
+
+    <footer class="footer">
+        <p>Level 1 - Task 3 | Built with HTML, CSS and JavaScript</p>
+    </footer>
+
+    <script src="js/script.js"></script>
+</body>
+</html>
