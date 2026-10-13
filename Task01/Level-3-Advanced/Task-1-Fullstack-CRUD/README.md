@@ -223,3 +223,63 @@ The backend's `npm test` script is currently a placeholder; the manual tests doc
 
 The goal of StudentHub is to demonstrate a full-stack CRUD workflow, including frontend and backend integration, REST API development, database connectivity, input validation, and persistent student record management.
 
+
+## Authentication Integration
+
+StudentHub uses the separate Task 2 Authentication API for user registration and login.
+
+### Services
+
+| Service | Local URL | Purpose |
+|---|---|---|
+| Frontend | `http://localhost:5173` | StudentHub user interface |
+| Student CRUD API | `http://localhost:5000` | Student record operations |
+| Authentication API | `http://localhost:5001` | Registration, login, and JWT issuance |
+| PostgreSQL | `localhost:5432` | Persistent application data |
+
+### Authentication Flow
+
+1. The user registers or signs in through the frontend.
+2. The authentication service verifies credentials and issues a JWT on successful login.
+3. The frontend sends the token as a Bearer token when requesting student records.
+4. The CRUD backend verifies the token before allowing access to `/api/students`.
+5. Requests without a valid token should return `401 Unauthorized`.
+
+### Running the Integrated Application
+
+Start each backend in its own terminal:
+
+```bash
+# Terminal 1: Student CRUD backend
+cd ~/Desktop/Codveda/Task01/Level-3-Advanced/Task-1-Fullstack-CRUD/server
+npm run dev
+```
+
+```bash
+# Terminal 2: Authentication backend
+cd ~/Desktop/Codveda/Task01/Level-3-Advanced/Task-2-Authentication/server
+npm run dev
+```
+
+Start the frontend in a third terminal:
+
+```bash
+cd ~/Desktop/Codveda/Task01/Level-3-Advanced/Task-1-Fullstack-CRUD/client
+npm run dev
+```
+
+Configure the frontend authentication URL using `VITE_AUTH_API_URL` if needed. The default development URL is `http://localhost:5001/api/auth`.
+
+Both backend services must have the same `JWT_SECRET`. Keep each service's database settings in its own local environment file.
+
+### Authentication Testing
+
+- [ ] Login and registration screens load.
+- [ ] Valid login allows access to student records.
+- [ ] Invalid credentials are rejected.
+- [ ] Student API requests without a token return `401`.
+- [ ] Valid tokens permit authorized student CRUD operations.
+- [ ] Logout clears the frontend session.
+- [ ] Refreshing while signed out does not expose student records.
+
+See the Task 2 Authentication README for the authentication API details and setup instructions.

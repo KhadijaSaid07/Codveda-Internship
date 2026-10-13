@@ -1121,3 +1121,54 @@ h1 {
     justify-content: flex-start;
   }
 }
+
+/* Authentication session controls */
+.auth-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.auth-user-label {
+  max-width: 190px;
+  overflow: hidden;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auth-logout-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 11px;
+  border: 1px solid #dce4ec;
+  border-radius: 9px;
+  background: #fff;
+  color: #334155;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-logout-button:hover {
+  border-color: #0f766e;
+  color: #0f766e;
+}
+
+@media (max-width: 680px) {
+  .auth-user-label {
+    display: none;
+  }
+
+  .auth-logout-button {
+    padding: 9px;
+  }
+}

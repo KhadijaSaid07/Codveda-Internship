@@ -10,6 +10,7 @@ import {
   Power,
   LayoutDashboard,
   LoaderCircle,
+  LogOut,
   Menu,
   Plus,
   RefreshCw,
@@ -20,19 +21,27 @@ import {
   X,
 } from 'lucide-react'
 import './App.css'
+import AuthPage from './AuthPage.jsx'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 async function requestStudents(endpoint, options = {}) {
+  const token = sessionStorage.getItem('studentHubToken')
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   })
 
   const result = await response.json().catch(() => ({}))
+
+  if (response.status === 401) {
+    sessionStorage.removeItem('studentHubToken')
+    window.dispatchEvent(new Event('studenthub:unauthorized'))
+  }
 
   if (!response.ok) {
     throw new Error(result.message || `Request failed (${response.status})`)
@@ -42,6 +51,8 @@ async function requestStudents(endpoint, options = {}) {
 }
 
 function App() {
+  const [user, setUser] = useState(null)
+  const [authReady, setAuthReady] = useState(false)
   const [students, setStudents] = useState([])
   const [search, setSearch] = useState('')
   const [year, setYear] = useState('')
@@ -70,6 +81,48 @@ function App() {
     enrollment_date: '',
   })
 
+  useEffect(() => {
+    let active = true
+    const token = sessionStorage.getItem('studentHubToken')
+
+    if (!token) {
+      setAuthReady(true)
+      return () => { active = false }
+    }
+
+    fetch(`${import.meta.env.VITE_AUTH_API_URL || 'http://localhost:5001/api/auth'}/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(result.message || 'Session expired.')
+        return result
+      })
+      .then((result) => {
+        if (active && result.user) setUser(result.user)
+        else sessionStorage.removeItem('studentHubToken')
+      })
+      .catch(() => {
+        sessionStorage.removeItem('studentHubToken')
+      })
+      .finally(() => {
+        if (active) setAuthReady(true)
+      })
+
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    function handleUnauthorized() {
+      setUser(null)
+      setStudents([])
+      setAuthReady(true)
+    }
+
+    window.addEventListener('studenthub:unauthorized', handleUnauthorized)
+    return () => window.removeEventListener('studenthub:unauthorized', handleUnauthorized)
+  }, [])
+
   const loadStudents = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -92,13 +145,19 @@ function App() {
     }
   }, [search, year])
 
- useEffect(() => {
-  const timer = setTimeout(() => {
-    loadStudents()
-  }, 0)
+  useEffect(() => {
+    if (!authReady || !user) {
+      setStudents([])
+      setLoading(false)
+      return
+    }
 
-  return () => clearTimeout(timer)
-}, [loadStudents])
+    const timer = setTimeout(() => {
+      loadStudents()
+    }, 0)
+
+    return () => clearTimeout(timer)
+  }, [authReady, user, loadStudents])
   const totalStudents = students.length
   const yearCounts = useMemo(
     () =>
@@ -269,6 +328,21 @@ function App() {
     }
   }
 
+  if (!authReady) {
+    return (
+      <main className="auth-page">
+        <div className="auth-loading">
+          <LoaderCircle size={25} className="auth-spinner" />
+          <span>Restoring your session...</span>
+        </div>
+      </main>
+    )
+  }
+
+  if (!user) {
+    return <AuthPage onAuthenticated={setUser} />
+  }
+
   return (
     <div className="app-layout">
       <aside className={`sidebar ${mobileMenuOpen ? 'sidebar-open' : ''}`}>
@@ -338,7 +412,29 @@ function App() {
           <div className="breadcrumb">Workspace <span>/</span> Student Records</div>
           <div className="topbar-right">
             <span className="today-label">STUDENT ADMINISTRATION</span>
-            <div className="profile-avatar">SA</div>
+            <div className="profile-avatar">
+              {(user.fullName || user.email || 'U').trim().charAt(0).toUpperCase()}
+            </div>
+            <span className="auth-user-label">{user.fullName || user.email}</span>
+            <button
+              className="auth-logout-button"
+              type="button"
+              onClick={() => {
+                sessionStorage.removeItem('studentHubToken')
+                setUser(null)
+                setStudents([])
+                setSearch('')
+                setYear('')
+                setError('')
+                setNotice('')
+                setShowStudentForm(false)
+                setViewingStudent(null)
+                setEditingStudentId(null)
+              }}
+            >
+              <LogOut size={16} />
+              <span>Sign out</span>
+            </button>
           </div>
         </header>
 

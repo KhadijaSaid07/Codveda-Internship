@@ -2,6 +2,7 @@
 const express = require('express');
 const cors = require('cors');
 const pool = require('./db');
+const authenticateToken = require('./authMiddleware');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
@@ -23,6 +24,8 @@ app.get('/api/health', async (req, res, next) => {
     next(error);
   }
 });
+
+app.use('/api/students', authenticateToken);
 
 // Retrieve student records, with optional search and filters.
 app.get('/api/students', async (req, res, next) => {
