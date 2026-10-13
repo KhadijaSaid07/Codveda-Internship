@@ -1,0 +1,516 @@
+
+const express = require('express');
+const cors = require('cors');
+const pool = require('./db');
+
+const app = express();
+const PORT = Number(process.env.PORT) || 5000;
+
+app.use(cors());
+app.use(express.json({ limit: '20kb' }));
+
+// Confirm that the API and database are working.
+app.get('/api/health', async (req, res, next) => {
+  try {
+    await pool.query('SELECT 1');
+
+    res.json({
+      success: true,
+      message: 'Student Records API is running.',
+      database: 'connected',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Retrieve student records, with optional search and filters.
+app.get('/api/students', async (req, res, next) => {
+  try {
+    const { search, course, year } = req.query;
+    const conditions = [];
+    const values = [];
+
+    if (search !== undefined) {
+      if (typeof search !== 'string' || search.trim().length > 100) {
+        return res.status(400).json({
+          success: false,
+          message: 'Search must be text with at most 100 characters.',
+        });
+      }
+
+      const term = search.trim();
+
+      if (term) {
+        values.push(`%${term}%`);
+        const index = values.length;
+
+        conditions.push(`(
+          registration_number ILIKE $${index}
+          OR first_name ILIKE $${index}
+          OR last_name ILIKE $${index}
+          OR email ILIKE $${index}
+          OR course ILIKE $${index}
+        )`);
+      }
+    }
+
+    if (course !== undefined) {
+      if (typeof course !== 'string' || course.trim().length > 150) {
+        return res.status(400).json({
+          success: false,
+          message: 'Course must be text with at most 150 characters.',
+        });
+      }
+
+      if (course.trim()) {
+        values.push(course.trim());
+        conditions.push(`course = $${values.length}`);
+      }
+    }
+
+    if (year !== undefined) {
+      const studyYear = Number(year);
+
+      if (
+        typeof year !== 'string' ||
+        !/^[1-8]$/.test(year) ||
+        !Number.isInteger(studyYear)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: 'Year must be an integer between 1 and 8.',
+        });
+      }
+
+      values.push(studyYear);
+      conditions.push(`year_of_study = $${values.length}`);
+    }
+
+    const whereClause = conditions.length
+      ? `WHERE ${conditions.join(' AND ')}`
+      : '';
+
+    const query = `
+      SELECT
+        id,
+        registration_number,
+        first_name,
+        last_name,
+        email,
+        gender,
+        date_of_birth,
+        course,
+        year_of_study,
+        phone,
+        address,
+        enrollment_date,
+        created_at,
+        updated_at
+      FROM students
+      ${whereClause}
+      ORDER BY id ASC
+    `;
+
+    const { rows } = await pool.query(query, values);
+
+    res.json({
+      success: true,
+      count: rows.length,
+      data: rows,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+app.put('/api/students/:id', async (req, res, next) => {
+  const id = req.params.id;
+
+  if (!/^[1-9]\d*$/.test(id)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Student ID must be a positive integer.',
+    });
+  }
+
+  const errors = validateStudent(req.body);
+
+  if (errors.length) {
+    return res.status(400).json({
+      success: false,
+      message: 'Student validation failed.',
+      errors,
+    });
+  }
+
+  const body = req.body;
+
+  try {
+    const query = `
+      UPDATE students
+      SET
+        registration_number = $1,
+        first_name = $2,
+        last_name = $3,
+        email = $4,
+        gender = $5,
+        date_of_birth = $6,
+        course = $7,
+        year_of_study = $8,
+        phone = $9,
+        address = $10,
+        enrollment_date = COALESCE($11::date, enrollment_date),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $12
+      RETURNING *
+    `;
+
+    const values = [
+      body.registration_number.trim(),
+      body.first_name.trim(),
+      body.last_name.trim(),
+      body.email.trim(),
+      body.gender || null,
+      body.date_of_birth || null,
+      body.course.trim(),
+      Number(body.year_of_study),
+      body.phone?.trim() || null,
+      body.address?.trim() || null,
+      body.enrollment_date || null,
+      id,
+    ];
+
+    const { rows } = await pool.query(query, values);
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Student updated successfully.',
+      data: rows[0],
+    });
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({
+        success: false,
+        message: 'Registration number or email already exists.',
+      });
+    }
+
+    if (error.code === '23514' || error.code === '22007') {
+      return res.status(400).json({
+        success: false,
+        message: 'Student data violates a database validation rule.',
+      });
+    }
+
+    next(error);
+  }
+});
+
+
+app.delete('/api/students/:id', async (req, res, next) => {
+  const id = req.params.id;
+
+  if (!/^[1-9]\d*$/.test(id)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Student ID must be a positive integer.',
+    });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      'DELETE FROM students WHERE id = $1 RETURNING id, registration_number',
+      [id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Student deleted successfully.',
+      data: rows[0],
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+// Handle unknown API routes.
+
+function validateStudent(body) {
+  const errors = [];
+  const required = [
+    'registration_number',
+    'first_name',
+    'last_name',
+    'email',
+    'course',
+    'year_of_study',
+  ];
+
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return ['Request body must be a JSON object.'];
+  }
+
+  for (const field of required) {
+    if (
+      body[field] === undefined ||
+      body[field] === null ||
+      typeof body[field] !== 'string' &&
+        field !== 'year_of_study'
+    ) {
+      if (field === 'year_of_study' && body[field] !== undefined) {
+        continue;
+      }
+
+      errors.push(`${field} is required.`);
+    }
+  }
+
+  const textFields = [
+    ['registration_number', 30],
+    ['first_name', 100],
+    ['last_name', 100],
+    ['email', 255],
+    ['course', 150],
+  ];
+
+  for (const [field, maxLength] of textFields) {
+    if (typeof body[field] === 'string') {
+      const value = body[field].trim();
+
+      if (!value) {
+        errors.push(`${field} cannot be empty.`);
+      } else if (value.length > maxLength) {
+        errors.push(`${field} must not exceed ${maxLength} characters.`);
+      }
+    }
+  }
+
+  const namePattern = /^[\p{L}](?:[\p{L} '-]*[\p{L}])?$/u;
+
+  for (const field of ['first_name', 'last_name']) {
+    if (
+      typeof body[field] === 'string' &&
+      !namePattern.test(body[field].trim())
+    ) {
+      errors.push(`${field} must contain letters, spaces, hyphens or apostrophes only.`);
+    }
+  }
+
+  if (
+    typeof body.email === 'string' &&
+    !/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(body.email.trim())
+  ) {
+    errors.push('Please provide a valid email address.');
+  }
+
+  const year = Number(body.year_of_study);
+
+  if (
+    body.year_of_study === undefined ||
+    body.year_of_study === null ||
+    body.year_of_study === '' ||
+    !Number.isInteger(year) ||
+    year < 1 ||
+    year > 8
+  ) {
+    errors.push('year_of_study must be an integer between 1 and 8.');
+  }
+
+  if (
+    body.gender != null &&
+    !['Female', 'Male', 'Other', 'Prefer not to say'].includes(body.gender)
+  ) {
+    errors.push('Please select a valid gender.');
+  }
+
+  for (const field of ['date_of_birth', 'enrollment_date']) {
+    if (body[field] != null && body[field] !== '') {
+      const value = body[field];
+      const parsed = new Date(`${value}T00:00:00Z`);
+
+      if (
+        typeof value !== 'string' ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+        Number.isNaN(parsed.getTime()) ||
+        parsed.toISOString().slice(0, 10) !== value
+      ) {
+        errors.push(`${field} must be a valid date in YYYY-MM-DD format.`);
+      }
+    }
+  }
+
+  if (body.phone != null && typeof body.phone !== 'string') {
+    errors.push('phone must be text.');
+  }
+
+  if (typeof body.phone === 'string' && body.phone.length > 30) {
+    errors.push('phone must not exceed 30 characters.');
+  }
+
+  if (body.address != null && typeof body.address !== 'string') {
+    errors.push('address must be text.');
+  }
+
+  return errors;
+}
+
+app.get('/api/students/:id', async (req, res, next) => {
+  const id = req.params.id;
+
+  if (!/^[1-9]\d*$/.test(id)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Student ID must be a positive integer.',
+    });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM students WHERE id = $1',
+      [id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: rows[0],
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+// Create a student record.
+app.post('/api/students', async (req, res, next) => {
+  const errors = validateStudent(req.body);
+
+  if (errors.length) {
+    return res.status(400).json({
+      success: false,
+      message: 'Student validation failed.',
+      errors,
+    });
+  }
+
+  const body = req.body;
+
+  try {
+    const query = `
+      INSERT INTO students (
+        registration_number,
+        first_name,
+        last_name,
+        email,
+        gender,
+        date_of_birth,
+        course,
+        year_of_study,
+        phone,
+        address,
+        enrollment_date
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        COALESCE($11::date, CURRENT_DATE)
+      )
+      RETURNING *
+    `;
+
+    const values = [
+      body.registration_number.trim(),
+      body.first_name.trim(),
+      body.last_name.trim(),
+      body.email.trim(),
+      body.gender || null,
+      body.date_of_birth || null,
+      body.course.trim(),
+      Number(body.year_of_study),
+      body.phone?.trim() || null,
+      body.address?.trim() || null,
+      body.enrollment_date || null,
+    ];
+
+    const { rows } = await pool.query(query, values);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Student created successfully.',
+      data: rows[0],
+    });
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({
+        success: false,
+        message: 'Registration number or email already exists.',
+      });
+    }
+
+    if (error.code === '23514' || error.code === '22007') {
+      return res.status(400).json({
+        success: false,
+        message: 'Student data violates a database validation rule.',
+      });
+    }
+
+    next(error);
+  }
+});
+
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'API endpoint not found.',
+  });
+});
+
+// Return a safe error response.
+app.use((error, req, res, next) => {
+  console.error('API error:', error.message);
+
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  res.status(500).json({
+    success: false,
+    message: 'An unexpected server error occurred.',
+  });
+});
+
+const server = app.listen(PORT, () => {
+  console.log(`Student Records API running on port ${PORT}`);
+});
+
+// Close connections cleanly when the server stops.
+function shutdown() {
+  server.close(() => {
+    pool.end().finally(() => process.exit(0));
+  });
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
